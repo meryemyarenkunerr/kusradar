@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>KuşRadar — Kuş Tanıma Uygulaması</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #21262d;
+    --border: #30363d;
+    --accent: #e8a838;
+    --accent2: #5fa8d3;
+    --text: #e6edf3;
+    --text-muted: #7d8590;
+    --danger: #f85149;
+    --success: #3fb950;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background stars */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 20% 30%, rgba(232,168,56,0.3) 0%, transparent 100%),
+      radial-gradient(1px 1px at 80% 10%, rgba(95,168,211,0.3) 0%, transparent 100%),
+      radial-gradient(1.5px 1.5px at 50% 60%, rgba(232,168,56,0.2) 0%, transparent 100%),
+      radial-gradient(1px 1px at 10% 80%, rgba(95,168,211,0.2) 0%, transparent 100%),
+      radial-gradient(1px 1px at 90% 70%, rgba(255,255,255,0.15) 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 420px;
+    margin: 0 auto;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  .header {
+    padding: 28px 24px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo-icon {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--accent), #c4831e);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+    box-shadow: 0 0 20px rgba(232,168,56,0.3);
+  }
+
+  .logo-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--text);
+  }
+
+  .logo-text span { color: var(--accent); }
+
+  .logo-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    margin-top: 1px;
+  }
+
+  /* Main content */
+  .main { flex: 1; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+
+  /* Upload area */
+  .upload-area {
+    border: 2px dashed var(--border);
+    border-radius: 20px;
+    padding: 36px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .upload-area::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(232,168,56,0.05), transparent 70%);
+    pointer-events: none;
+  }
+
+  .upload-area:hover, .upload-area.drag-over {
+    border-color: var(--accent);
+    background: rgba(232,168,56,0.04);
+  }
+
+  .upload-area input { display: none; }
+
+  .upload-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    filter: drop-shadow(0 0 12px rgba(232,168,56,0.4));
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-6px); }
+  }
+
+  .upload-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 18px;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .upload-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .upload-btn {
+    display: inline-block;
+    margin-top: 16px;
+    padding: 10px 24px;
+    background: var(--accent);
+    color: #000;
+    border-radius: 100px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+  }
+
+  .upload-btn:hover { background: #f0b84a; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(232,168,56,0.4); }
+
+  /* Preview */
+  .preview-container {
+    display: none;
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+    background: var(--surface);
+  }
+
+  .preview-container.show { display: block; }
+
+  .preview-img {
+    width: 100%;
+    height: 240px;
+    object-fit: cover;
+    display: block;
+  }
+
+  .preview-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(13,17,23,0.9) 0%, transparent 60%);
+    display: flex;
+    align-items: flex-end;
+    padding: 16px;
+  }
+
+  .change-photo-btn {
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 100px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .change-photo-btn:hover { background: rgba(255,255,255,0.25); }
+
+  /* Analyze button */
+  .analyze-btn {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--accent), #c4831e);
+    color: #000;
+    border: none;
+    border-radius: 16px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 20px rgba(232,168,56,0.3);
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .analyze-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(232,168,56,0.4); }
+  .analyze-btn:active { transform: translateY(0); }
+  .analyze-btn.show { display: flex; }
+  .analyze-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+  /* Loading */
+  .loading {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 32px;
+    background: var(--surface);
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    text-align: center;
+  }
+
+  .loading.show { display: flex; }
+
+  .spinner {
+    width: 48px;
+    height: 48px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 16px;
+    color: var(--text);
+  }
+
+  .loading-sub { font-size: 12px; color: var(--text-muted); }
+
+  /* Result card */
+  .result-card {
+    display: none;
+    background: var(--surface);
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .result-card.show { display: block; }
+
+  .result-header {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg, rgba(232,168,56,0.08), transparent);
+  }
+
+  .bird-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.2;
+  }
+
+  .bird-latin {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 14px;
+    color: var(--accent);
+    margin-top: 4px;
+  }
+
+  .confidence-bar {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .confidence-label { font-size: 11px; color: var(--text-muted); letter-spacing: 0.5px; }
+
+  .bar-track {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 100px;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--success));
+    border-radius: 100px;
+    transition: width 1s ease;
+    width: 0%;
+  }
+
+  .confidence-val { font-size: 12px; color: var(--accent); font-weight: 500; }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tab {
+    flex: 1;
+    padding: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 2px solid transparent;
+    letter-spacing: 0.3px;
+  }
+
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  /* Tab content */
+  .tab-content { display: none; padding: 20px; }
+  .tab-content.active { display: block; }
+
+  /* Info tab */
+  .info-section { margin-bottom: 20px; }
+  .info-section:last-child { margin-bottom: 0; }
+
+  .info-label {
+    font-size: 10px;
+    letter-spacing: 1.2px;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+
+  .info-text {
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.7;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .info-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+
+  .info-chip .label { font-size: 10px; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 3px; }
+  .info-chip .value { font-size: 13px; color: var(--text); font-weight: 500; }
+
+  /* Migration tab */
+  .migration-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 16px;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+
+  .migration-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5; }
+
+  .world-map {
+    width: 100%;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #1a2332;
+    position: relative;
+  }
+
+  .world-map svg { width: 100%; height: auto; display: block; }
+
+  .route-legend {
+    display: flex;
+    gap: 16px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
+
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Wikipedia source */
+  .wiki-source {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .wiki-link {
+    color: var(--accent2);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .wiki-link:hover { text-decoration: underline; }
+
+  /* Error */
+  .error-box {
+    display: none;
+    padding: 16px;
+    background: rgba(248,81,73,0.1);
+    border: 1px solid rgba(248,81,73,0.3);
+    border-radius: 12px;
+    font-size: 13px;
+    color: #f85149;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  .error-box.show { display: block; }
+
+  /* Reset button */
+  .reset-btn {
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: none;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .reset-btn.show { display: block; }
+  .reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 100px; }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: fadeIn 0.4s ease forwards; }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 100px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+
+  .status-badge.migrant { background: rgba(232,168,56,0.15); color: var(--accent); border: 1px solid rgba(232,168,56,0.3); }
+  .status-badge.resident { background: rgba(63,185,80,0.15); color: var(--success); border: 1px solid rgba(63,185,80,0.3); }
+  .status-badge.endangered { background: rgba(248,81,73,0.15); color: var(--danger); border: 1px solid rgba(248,81,73,0.3); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div class="logo-icon">🦅</div>
+    <div>
+      <div class="logo-text">Kuş<span>Radar</span></div>
+      <div class="logo-sub">AI Destekli Kuş Tanıma</div>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- Upload area -->
+    <div class="upload-area" id="uploadArea">
+      <input type="file" id="fileInput" accept="image/*" capture="environment">
+      <div class="upload-icon">🐦</div>
+      <div class="upload-title">Kuş Fotoğrafı Yükle</div>
+      <div class="upload-sub">Telefonunuzdan bir fotoğraf seçin<br>veya doğrudan fotoğraf çekin</div>
+      <button class="upload-btn" onclick="document.getElementById('fileInput').click()">📷 Fotoğraf Seç</button>
+    </div>
+
+    <!-- Preview -->
+    <div class="preview-container" id="previewContainer">
+      <img id="previewImg" class="preview-img" alt="Preview">
+      <div class="preview-overlay"></div>
+    </div>
+
+    <!-- Analyze button -->
+    <button class="analyze-btn" id="analyzeBtn" onclick="analyzeImage()">
+      🔍 Kuşu Tanı
+    </button>
+
+    <!-- Loading -->
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div class="loading-text">Kuş analiz ediliyor...</div>
+      <div class="loading-sub">Lütfen bekleyin...</div>
+    </div>
+
+    <!-- Error -->
+    <div class="error-box" id="errorBox"></div>
+
+    <!-- Result card -->
+    <div class="result-card fade-in" id="resultCard">
+      <div class="result-header">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+          <div>
+            <div class="bird-name" id="birdName">—</div>
+            <div class="bird-latin" id="birdLatin">—</div>
+          </div>
+          <span class="status-badge migrant" id="statusBadge">—</span>
+        </div>
+        <div class="confidence-bar">
+          <span class="confidence-label">DOĞRULUK</span>
+          <div class="bar-track">
+            <div class="bar-fill" id="confidenceBar"></div>
+          </div>
+          <span class="confidence-val" id="confidenceVal">—</span>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('info', this)">📋 Bilgi</div>
+        <div class="tab" onclick="switchTab('habitat', this)">🌿 Habitat</div>
+        <div class="tab" onclick="switchTab('migration', this)">🗺️ Göç</div>
+      </div>
+
+      <!-- Info tab -->
+      <div class="tab-content active" id="tab-info">
+        <div class="info-section">
+          <div class="info-label">Genel Bilgi</div>
+          <div class="info-text" id="birdDescription">—</div>
+        </div>
+        <div class="info-grid" id="infoGrid"></div>
+        <div id="alternativesBox" style="display:none;margin-top:14px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:12px"></div>
+        <div class="wiki-source" id="wikiSource" style="display:none">
+          <span>📖</span>
+          <span>Kaynak: <a class="wiki-link" id="wikiLink" href="#" target="_blank">Wikipedia</a></span>
+          <span style="margin-left:auto; font-size:10px; opacity:0.6">TR / EN</span>
+        </div>
+      </div>
+
+      <!-- Habitat tab -->
+      <div class="tab-content" id="tab-habitat">
+        <div class="info-section">
+          <div class="info-label">Yaşam Alanı</div>
+          <div class="info-text" id="birdHabitat">—</div>
+        </div>
+        <div class="info-section">
+          <div class="info-label">Beslenme</div>
+          <div class="info-text" id="birdFood">—</div>
+        </div>
+        <div class="info-section">
+          <div class="info-label">Üreme</div>
+          <div class="info-text" id="birdBreeding">—</div>
+        </div>
+      </div>
+
+      <!-- Migration tab -->
+      <div class="tab-content" id="tab-migration">
+        <div class="migration-title" id="migrationTitle">Göç Rotası</div>
+        <div class="migration-sub" id="migrationDesc">—</div>
+        <div id="migrationMapWrap" style="border-radius:14px;overflow:hidden;border:1px solid var(--border);background:#0a1628;position:relative;height:280px"></div>
+        <div class="route-legend" id="mapLegend"></div>
+      </div>
+    </div>
+
+    <!-- Reset -->
+    <button class="reset-btn" id="resetBtn" onclick="resetApp()">↩ Yeni Fotoğraf Yükle</button>
+  </main>
+</div>
+
+<script>
+let currentImageBase64 = null;
+let currentImageType = null;
+const analysisCache = new Map(); // hash -> {birdInfo, wikiSummary, wikiUrl}
+
+// File input handler
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const result = ev.target.result;
+    currentImageBase64 = result.split(',')[1];
+    currentImageType = file.type || 'image/jpeg';
+    document.getElementById('previewImg').src = result;
+    document.getElementById('previewContainer').classList.add('show');
+    document.getElementById('uploadArea').style.display = 'none';
+    document.getElementById('analyzeBtn').classList.add('show');
+    document.getElementById('resultCard').classList.remove('show');
+    document.getElementById('errorBox').classList.remove('show');
+    document.getElementById('resetBtn').classList.remove('show');
+  };
+  reader.readAsDataURL(file);
+});
+
+// Drag and drop
+const uploadArea = document.getElementById('uploadArea');
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadArea.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) {
+    document.getElementById('fileInput').files = e.dataTransfer.files;
+    document.getElementById('fileInput').dispatchEvent(new Event('change'));
+  }
+});
+uploadArea.addEventListener('click', e => {
+  if (!e.target.closest('button')) document.getElementById('fileInput').click();
+});
+
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+function setLoading(on) {
+  document.getElementById('loading').classList.toggle('show', on);
+  document.getElementById('analyzeBtn').disabled = on;
+}
+
+function showError(msg) {
+  const box = document.getElementById('errorBox');
+  box.textContent = msg;
+  box.classList.add('show');
+}
+
+async function analyzeImage() {
+  if (!currentImageBase64) return;
+
+  // Simple cache key: first 64 chars of base64 (unique per image)
+  const cacheKey = currentImageBase64.substring(0, 64);
+  if (analysisCache.has(cacheKey)) {
+    const cached = analysisCache.get(cacheKey);
+    renderResult(cached.birdInfo, cached.wikiSummary, cached.wikiUrl);
+    return;
+  }
+
+  setLoading(true);
+  document.getElementById('errorBox').classList.remove('show');
+  document.getElementById('resultCard').classList.remove('show');
+  document.getElementById('resetBtn').classList.remove('show');
+
+  try {
+    // Step 1: Identify the bird with Claude
+    const identifyResp = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        temperature: 0,
+        max_tokens: 1000,
+        messages: [{
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: { type: "base64", media_type: currentImageType, data: currentImageBase64 }
+            },
+            {
+              type: "text",
+              text: `Sen uzman bir ornitozolog (kuş bilimci) olarak bu fotoğraftaki kuşu tanımla. Tanımlama yaparken gaga şekli ve uzunluğu, tüy rengi ve deseni, bacak rengi, vücut oranları, kanat ve kuyruk yapısı, göz rengi gibi morfolojik detayları dikkatlice değerlendir. Birbirine benzer türleri (örn. kamışçın türleri, şahin türleri) birbirinden ayırt et. Görüntü kalitesi düşükse confidence değerini düşür. Sadece aşağıdaki JSON formatında yanıt ver, başka hiçbir şey yazma:
+{
+  "turkish_name": "kuşun Türkçe adı",
+  "english_name": "kuşun İngilizce adı",
+  "latin_name": "latince bilimsel adı",
+  "confidence": 85,
+  "status": "göçmen veya yerleşik veya nadir",
+  "status_en": "migrant veya resident veya rare",
+  "conservation": "LC veya NT veya VU veya EN veya CR",
+  "size": "küçük/orta/büyük",
+  "family": "familya adı Türkçe",
+  "description": "Türkçe olarak 2-3 cümle genel bilgi",
+  "habitat": "Türkçe olarak yaşam alanı bilgisi 2-3 cümle",
+  "food": "Türkçe olarak beslenme bilgisi 1-2 cümle",
+  "breeding": "Türkçe olarak üreme bilgisi 1-2 cümle",
+  "migration_type": "uzun_mesafe veya kisa_mesafe veya yerlesik",
+  "migration_desc": "Türkçe olarak göç bilgisi 2-3 cümle",
+  "resident_region": "Eğer tür yıl boyunca aynı bölgede kalıyorsa o bölgenin adı. SADECE coğrafi bölge adı kullan (örn: 'Orta Doğu', 'Güney Asya', 'Akdeniz Havzası'). Ülke adı yazma. Göçmen türlerde BOŞ bırak.",
+  "spring_region": "Bu kuşun ilkbaharda bilinen ve spesifik bir transit/konaklama bölgesi varsa doldur (örn. dar bir boğaz veya koridor kullanıyorsa). Geniş cephede göç eden türlerde BOŞALT. Emin değilsen BOŞALT. SADECE coğrafi bölge adı. Ülke adı yazma.",
+  "summer_region": "Bu kuşun yazın bulunduğu bölge — eğer yazın bu bölgede kalıyorsa doldur, yoksa BOŞ bırak. SADECE coğrafi bölge adı (örn: 'Kuzey Avrupa', 'Sibirya', 'Orta Asya'). Ülke adı yazma.",
+  "autumn_region": "Bu kuşun sonbaharda bilinen ve spesifik bir transit/konaklama bölgesi varsa doldur. Geniş cephede göç eden türlerde BOŞALT. Emin değilsen BOŞALT. SADECE coğrafi bölge adı. Ülke adı yazma.",
+  "winter_region": "Bu kuşun kışın fiilen bulunduğu bölge — eğer kışın bu bölgede kalıyorsa doldur, kışın göç etmiyorsa BOŞ bırak. SADECE coğrafi bölge adı (örn: 'Doğu Afrika', 'Sahra Altı Afrika', 'Güney Asya'). Asla sadece 'Afrika' yazma. Ülke adı yazma.",
+  "wingspan": "kanat açıklığı cm olarak",
+  "length": "boy cm olarak",
+  "weight": "ağırlık gram olarak",
+  "alternatives": ["olası ikinci tür Türkçe adı", "olası üçüncü tür Türkçe adı"],
+  "identification_notes": "Türkçe olarak hangi özelliklere bakarak bu türü tespit ettiğini 1-2 cümle açıkla",
+  "is_bird": true
+}`
+            }
+          ]
+        }]
+      })
+    });
+
+    const identifyData = await identifyResp.json();
+    const rawText = identifyData.content[0].text.trim();
+
+    let birdInfo;
+    try {
+      const cleaned = rawText.replace(/```json|```/g, '').trim();
+      birdInfo = JSON.parse(cleaned);
+    } catch {
+      throw new Error("Kuş bilgisi ayrıştırılamadı. Lütfen daha net bir kuş fotoğrafı yükleyin.");
+    }
+
+    if (!birdInfo.is_bird) {
+      throw new Error("Bu fotoğrafta bir kuş tespit edilemedi. Lütfen bir kuşun fotoğrafını yükleyin.");
+    }
+
+    // Step 2: Get Wikipedia summary
+    let wikiSummary = null;
+    let wikiUrl = null;
+    try {
+      // Try Turkish Wikipedia first
+      const trWikiResp = await fetch(`https://tr.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(birdInfo.turkish_name)}`, { signal: AbortSignal.timeout(5000) });
+      if (trWikiResp.ok) {
+        const trData = await trWikiResp.json();
+        if (trData.extract && trData.extract.length > 50) {
+          wikiSummary = trData.extract;
+          wikiUrl = trData.content_urls?.desktop?.page;
+        }
+      }
+    } catch {}
+
+    if (!wikiSummary) {
+      try {
+        // Try English Wikipedia
+        const enWikiResp = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(birdInfo.english_name)}`, { signal: AbortSignal.timeout(5000) });
+        if (enWikiResp.ok) {
+          const enData = await enWikiResp.json();
+          if (enData.extract && enData.extract.length > 50) {
+            wikiSummary = enData.extract;
+            wikiUrl = enData.content_urls?.desktop?.page;
+          }
+        }
+      } catch {}
+    }
+
+    // Use wiki summary if available, otherwise use AI description
+    const finalDescription = (wikiSummary && wikiSummary.length > 50) ? wikiSummary : birdInfo.description;
+
+    // Render result
+    analysisCache.set(cacheKey, {birdInfo, wikiSummary: finalDescription, wikiUrl});
+    renderResult(birdInfo, finalDescription, wikiUrl);
+
+  } catch (err) {
+    showError('⚠️ ' + (err.message || 'Bir hata oluştu. Lütfen tekrar deneyin.'));
+  } finally {
+    setLoading(false);
+  }
+}
+
+function renderResult(bird, description, wikiUrl) {
+  // Header
+  document.getElementById('birdName').textContent = bird.turkish_name;
+  document.getElementById('birdLatin').textContent = bird.latin_name;
+
+  const badge = document.getElementById('statusBadge');
+  const statusMap = { 'göçmen': ['migrant', '✈️ Göçmen'], 'yerleşik': ['resident', '🏠 Yerleşik'], 'nadir': ['endangered', '⚠️ Nadir'] };
+  const [cls, label] = statusMap[bird.status] || ['migrant', bird.status || '—'];
+  badge.className = `status-badge ${cls}`;
+  badge.textContent = label;
+
+  const conf = Math.min(Math.max(bird.confidence || 75, 10), 99);
+  document.getElementById('confidenceVal').textContent = conf + '%';
+  setTimeout(() => { document.getElementById('confidenceBar').style.width = conf + '%'; }, 100);
+
+  // Info tab
+  document.getElementById('birdDescription').textContent = description;
+
+  const grid = document.getElementById('infoGrid');
+  const chips = [
+    ['Boy', bird.length ? bird.length + ' cm' : '—'],
+    ['Kanat', bird.wingspan ? bird.wingspan + ' cm' : '—'],
+    ['Ağırlık', bird.weight ? bird.weight + ' g' : '—'],
+    ['Familya', bird.family || '—'],
+    ['Habitat', bird.status || '—'],
+    ['Koruma', bird.conservation || 'LC'],
+  ];
+  grid.innerHTML = chips.map(([l, v]) => `<div class="info-chip"><div class="label">${l}</div><div class="value">${v}</div></div>`).join('');
+
+  // Alternatives
+  const altContainer = document.getElementById('alternativesBox');
+  if (bird.alternatives && bird.alternatives.length > 0) {
+    altContainer.style.display = 'block';
+    altContainer.innerHTML = '<div class="info-label">BENZER TÜRLER OLABİLİR</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
+      bird.alternatives.filter(a => a && a.length > 2).map(a => `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:100px;padding:4px 10px;font-size:12px;color:var(--text-muted)">${a}</span>`).join('') +
+      '</div>';
+    if (bird.identification_notes) {
+      altContainer.innerHTML += `<div style="font-size:12px;color:var(--text-muted);margin-top:8px;line-height:1.5">🔍 ${bird.identification_notes}</div>`;
+    }
+  } else {
+    altContainer.style.display = 'none';
+  }
+
+  if (wikiUrl) {
+    document.getElementById('wikiSource').style.display = 'flex';
+    document.getElementById('wikiLink').href = wikiUrl;
+    document.getElementById('wikiLink').textContent = bird.turkish_name + ' - Wikipedia';
+  }
+
+  // Habitat tab
+  document.getElementById('birdHabitat').textContent = bird.habitat || '—';
+  document.getElementById('birdFood').textContent = bird.food || '—';
+  document.getElementById('birdBreeding').textContent = bird.breeding || '—';
+
+  // Migration tab
+  document.getElementById('migrationTitle').textContent =
+    bird.migration_type === 'yerlesik' ? '🏠 Yerleşik Tür' :
+    bird.migration_type === 'uzun_mesafe' ? '✈️ Uzun Mesafe Göçmeni' : '🔄 Kısa Mesafe Göçmeni';
+  // Pass all season fields to map renderer
+  if (!bird.resident_region) bird.resident_region = '';
+  if (!bird.spring_region)   bird.spring_region   = '';
+  if (!bird.autumn_region)   bird.autumn_region   = '';
+  document.getElementById('migrationDesc').textContent = bird.migration_desc || '—';
+
+  renderMigrationMap(bird);
+
+  document.getElementById('resultCard').classList.add('show');
+  document.getElementById('resetBtn').classList.add('show');
+  document.getElementById('analyzeBtn').classList.remove('show');
+  document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function renderMigrationMap(bird) {
+  const wrap = document.getElementById('migrationMapWrap');
+  wrap.innerHTML = '';
+  const W = wrap.offsetWidth || 370;
+  const H = 280;
+
+  // Region table: [centerLat, centerLon, halfLat, halfLon]
+  const REGIONS = {
+    'kuzey avrupa':      [64, 18, 6,12], 'orta avrupa':    [50, 14, 5,11],
+    'güney avrupa':      [43, 14, 4,10], 'batı avrupa':    [50,  3, 5, 9],
+    'doğu avrupa':       [52, 28, 5,10], 'avrupa':         [52, 15,10,18],
+    'balkanlar':         [43, 22, 4, 8], 'iskandinavya':   [64, 17, 6, 8],
+    'i̇skandinavya':     [64, 17, 6, 8], 'ingiltere':      [53, -2, 3, 4],
+    'sibirya':           [60,100, 8,32], 'orta asya':      [45, 65, 6,18],
+    'güney asya':        [22, 80, 6,15], 'güneydoğu asya': [12,108, 6,14],
+    'doğu asya':         [36,118, 6,12], 'batı asya':      [37, 52, 4,12],
+    'asya':              [48, 85,16,38], 'hint yarımadası':[22, 78, 6, 8],
+    'hindistan':         [22, 78, 6, 8], 'orta doğu':      [28, 43, 4,10],
+    'arabistan':         [24, 45, 4, 8],
+    'kuzey afrika':      [30, 17, 4,18], 'doğu afrika':    [ 2, 37, 6, 6],
+    'batı afrika':       [12,  0, 6, 8], 'orta afrika':    [ 0, 22, 6, 8],
+    'güney afrika':      [-28,25, 6, 8], 'sahra altı':     [ 5, 20,10,18],
+    'sahra altı afrika': [ 5, 20,10,18], 'doğu akdeniz':   [35, 33, 3, 8],
+    'batı akdeniz':      [37,  5, 3, 8], 'akdeniz':        [36, 16, 3,12],
+    'sahra':             [23, 12, 6,14], 'kuzey amerika':  [50,-100,12,28],
+    'orta amerika':      [15,-87, 4, 8], 'güney amerika':  [-15,-58,16,16],
+    'türkiye':           [39, 35, 3, 7], 'türkiye ve balkanlar':[41,26,4,10],
+    'kafkasya':          [42, 44, 3, 5], 'avustralya':     [-25,133, 8,16],
+    'iran':              [33, 54, 4, 8], 'irak':           [33, 44, 3, 6],
+  };
+
+  function getRegion(str) {
+    if (!str || !str.trim()) return null;
+    const s = str.toLowerCase();
+    // Try longest match first
+    let best = null, bestLen = 0;
+    for (const [k, v] of Object.entries(REGIONS)) {
+      if (s.includes(k) && k.length > bestLen) {
+        best = {lat:v[0],lon:v[1],dlat:v[2],dlon:v[3]};
+        bestLen = k.length;
+      }
+    }
+    return best;
+  }
+
+  // Season colors
+  const SEASON_COLOR = {
+    resident: '#7c5cbf',  // purple
+    spring:   '#3fb950',  // green
+    summer:   '#e05252',  // red
+    autumn:   '#e8a838',  // orange
+    winter:   '#5fa8d3',  // blue
+  };
+  const SEASON_LABEL = {
+    resident: 'Yerleşik Alan',
+    spring:   'İlkbahar',
+    summer:   'Yaz',
+    autumn:   'Sonbahar',
+    winter:   'Kış',
+  };
+
+  // Build circles list from bird data
+  const circles = [];
+  const addSeason = (key, fieldVal) => {
+    const reg = getRegion(fieldVal);
+    if (reg) circles.push({reg, color: SEASON_COLOR[key], label: SEASON_LABEL[key]});
+  };
+
+  addSeason('resident', bird.resident_region);
+  addSeason('spring',   bird.spring_region);
+  addSeason('summer',   bird.summer_region);
+  addSeason('autumn',   bird.autumn_region);
+  addSeason('winter',   bird.winter_region);
+
+  if (circles.length === 0)
+    circles.push({reg:{lat:39,lon:35,dlat:4,dlon:7}, color:SEASON_COLOR.resident, label:'Yaşam Alanı'});
+
+  const showRoute = circles.length >= 2;
+
+  // Dynamic legend
+  const legendEl = document.getElementById('mapLegend');
+  if (legendEl) {
+    legendEl.innerHTML = circles.map(c =>
+      `<div class="legend-item"><div class="legend-dot" style="background:${c.color}"></div>${c.label}</div>`
+    ).join('') + (circles.length >= 2 ? `<div class="legend-item"><div class="legend-dot" style="background:rgba(255,255,255,0.55)"></div>Göç Rotası</div>` : '');
+  }
+
+  // Tight bounding box
+  const PAD = 10;
+  let minLat=90, maxLat=-90, minLon=180, maxLon=-180;
+  for (const {reg} of circles) {
+    minLat = Math.min(minLat, reg.lat - reg.dlat - PAD);
+    maxLat = Math.max(maxLat, reg.lat + reg.dlat + PAD);
+    minLon = Math.min(minLon, reg.lon - reg.dlon - PAD);
+    maxLon = Math.max(maxLon, reg.lon + reg.dlon + PAD);
+  }
+  minLat = Math.max(-85, minLat); maxLat = Math.min(85, maxLat);
+  minLon = Math.max(-179,minLon); maxLon = Math.min(179,maxLon);
+
+  // Expand to match SVG aspect ratio
+  const spanLon = maxLon - minLon, spanLat = maxLat - minLat;
+  const ratio = W / H;
+  if (spanLon / spanLat < ratio) {
+    const add = (spanLat * ratio - spanLon) / 2;
+    minLon = Math.max(-179, minLon - add); maxLon = Math.min(179, maxLon + add);
+  } else {
+    const add = (spanLon / ratio - spanLat) / 2;
+    minLat = Math.max(-85, minLat - add); maxLat = Math.min(85, maxLat + add);
+  }
+
+  // Equirectangular projection
+  function proj(lat, lon) {
+    return [
+      (lon - minLon) / (maxLon - minLon) * W,
+      (maxLat - lat) / (maxLat - minLat) * H
+    ];
+  }
+
+  const NS = 'http://www.w3.org/2000/svg';
+  function mk(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const [k,v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  const svg = mk('svg', {width:W, height:H}, wrap);
+  mk('rect', {width:W, height:H, fill:'#0a1628'}, svg);
+
+  const defs = mk('defs',{},svg);
+  const cp = mk('clipPath',{id:'mapc'},defs);
+  mk('rect',{width:W,height:H},cp);
+
+  // Grid lines
+  const gg = mk('g',{'clip-path':'url(#mapc)'},svg);
+  for (let lon=-180; lon<=180; lon+=15) {
+    const [x]=proj(0,lon);
+    mk('line',{x1:x,y1:0,x2:x,y2:H,stroke:'#0d1e30','stroke-width':0.4},gg);
+  }
+  for (let lat=-75; lat<=75; lat+=15) {
+    const [,y]=proj(lat,0);
+    mk('line',{x1:0,y1:y,x2:W,y2:y,stroke:'#0d1e30','stroke-width':0.4},gg);
+  }
+  const [,eqy]=proj(0,0);
+  if (eqy > 0 && eqy < H)
+    mk('line',{x1:0,y1:eqy,x2:W,y2:eqy,stroke:'#112233','stroke-width':0.9,'stroke-dasharray':'4,4'},gg);
+
+  // Draw land — use GeoJSON polygon coordinates directly with our proj()
+  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+    .then(r => r.json())
+    .then(world => {
+      const countries = topojson.feature(world, world.objects.countries);
+      const lg = mk('g',{'clip-path':'url(#mapc)'},svg);
+
+      for (const feature of countries.features) {
+        const geom = feature.geometry;
+        const drawRings = (rings) => {
+          // Visibility: majority of ring points must be inside bbox
+          const ring0 = rings[0];
+          const inside = ring0.filter(([lon,lat]) =>
+            lon >= minLon && lon <= maxLon && lat >= minLat && lat <= maxLat);
+          if (inside.length < ring0.length * 0.15) return;
+
+          let d = '';
+          for (const ring of rings) {
+            let first = true;
+            for (const [lon,lat] of ring) {
+              // Clamp coordinates to bbox to avoid far-off points distorting the path
+              const clon = Math.max(minLon, Math.min(maxLon, lon));
+              const clat = Math.max(minLat, Math.min(maxLat, lat));
+              const [x,y] = proj(clat, clon);
+              d += (first ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+              first = false;
+            }
+            d += 'Z';
+          }
+          mk('path',{d,fill:'#1a2d42',stroke:'#2a4060','stroke-width':0.5},lg);
+        };
+
+        if (geom.type==='Polygon') drawRings(geom.coordinates);
+        else if (geom.type==='MultiPolygon') geom.coordinates.forEach(drawRings);
+      }
+      drawOverlay();
+    })
+    .catch(() => drawOverlay());
+
+  function drawOverlay() {
+    const og = mk('g',{'clip-path':'url(#mapc)'},svg);
+
+    // Draw route first (behind circles)
+    if (showRoute) {
+      for (let i = 0; i < circles.length - 1; i++) {
+        const [sx,sy] = proj(circles[i].reg.lat, circles[i].reg.lon);
+        const [ex,ey] = proj(circles[i+1].reg.lat, circles[i+1].reg.lon);
+        const cpx=(sx+ex)/2+(ey-sy)*0.2;
+        const cpy=(sy+ey)/2-Math.abs(ex-sx)*0.1;
+        mk('path',{d:`M${sx},${sy} Q${cpx},${cpy} ${ex},${ey}`,
+          fill:'none',stroke:'rgba(255,255,255,0.45)','stroke-width':1.6,'stroke-dasharray':'6,4'},og);
+        // Arrow
+        const t=0.88;
+        const ax=(1-t)**2*sx+2*(1-t)*t*cpx+t**2*ex;
+        const ay=(1-t)**2*sy+2*(1-t)*t*cpy+t**2*ey;
+        const a=Math.atan2(ey-ay,ex-ax), L=7;
+        mk('polyline',{
+          points:`${ex-L*Math.cos(a-0.4)},${ey-L*Math.sin(a-0.4)} ${ex},${ey} ${ex-L*Math.cos(a+0.4)},${ey-L*Math.sin(a+0.4)}`,
+          fill:'none',stroke:'rgba(255,255,255,0.65)','stroke-width':1.5},og);
+      }
+    }
+
+    // Draw circles
+    for (const {reg, color} of circles) {
+      const [cx,cy]=proj(reg.lat, reg.lon);
+      const [ex]   =proj(reg.lat, reg.lon+reg.dlon);
+      const [,ey]  =proj(reg.lat+reg.dlat, reg.lon);
+      const rx=Math.abs(ex-cx), ry=Math.abs(ey-cy);
+      mk('ellipse',{cx,cy,rx,ry,fill:color,'fill-opacity':0.18,
+        stroke:color,'stroke-width':1.5,'stroke-dasharray':'5,3','stroke-opacity':0.9},og);
+      mk('circle',{cx,cy,r:5,fill:color,stroke:'rgba(0,0,0,0.4)','stroke-width':1},og);
+    }
+  }
+}
+
+function resetApp() {
+  currentImageBase64 = null;
+  currentImageType = null;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('previewContainer').classList.remove('show');
+  document.getElementById('uploadArea').style.display = '';
+  document.getElementById('analyzeBtn').classList.remove('show');
+  document.getElementById('resultCard').classList.remove('show');
+  document.getElementById('errorBox').classList.remove('show');
+  document.getElementById('resetBtn').classList.remove('show');
+  document.getElementById('loading').classList.remove('show');
+}
+</script>
+</body>
+</html>
